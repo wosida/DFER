@@ -4,7 +4,6 @@ from spa_CNN import spa_CNN
 from T_former import TransformerEncoder
 import torch
 class T_mean(nn.Module):
-    #T帧的特征平均
     #（b,t,c,h,w）->(b,c,h,w)
     def __init__(self):
         super(T_mean, self).__init__()

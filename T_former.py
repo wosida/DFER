@@ -3,7 +3,7 @@ import torch.nn as nn
 from einops import rearrange
 import torch.nn.functional as F
 class LearnablePositionalEncoding(torch.nn.Module):
-    def __init__(self, d_model, max_len=32):
+    def __init__(self, d_model, max_len=16):
         super(LearnablePositionalEncoding, self).__init__()
         self.position_embeddings = torch.nn.Embedding(max_len, d_model)
 
@@ -11,7 +11,7 @@ class LearnablePositionalEncoding(torch.nn.Module):
         seq_len = x.size(1)
         positions = torch.arange(0, seq_len, dtype=torch.long, device=x.device)
         position_encodings = self.position_embeddings(positions) # (seq_len, d_model)
-        return x + position_encodings #广播机制
+        return x + position_encodings #broadcasting
 
 class Img2Seq(nn.Module):
     def __init__(self, c, h, w, d_model=768):
@@ -52,14 +52,14 @@ class seq2Img(nn.Module):
 
 
 class Multihead_Attention_origin(nn.Module):
-    def __init__(self,emb_size:int = 768,num_heads:int = 8,dropout:float=0):  #emb_size=768,num_heads=8,所以d_k=768/8=96,这里的emb_size是输入的维度
+    def __init__(self,emb_size:int = 768,num_heads:int = 8,dropout:float=0):
         super().__init__()
         self.emb_size=emb_size
         self.num_heads=num_heads
         self.queries=nn.Linear(emb_size,emb_size)
         self.keys=nn.Linear(emb_size,emb_size)
         self.values=nn.Linear(emb_size,emb_size)
-        #改进的代码，将qkv放在一个矩阵中，然后分割
+
        # self.qkv=nn.Linear(emb_size,emb_size*3)
         self.att_drop=nn.Dropout(dropout)
         self.projection=nn.Linear(emb_size,emb_size)
@@ -77,7 +77,7 @@ class Multihead_Attention_origin(nn.Module):
         out=self.projection(out)
         return out
 
-class Multihead_Attention(nn.Module): #input_dim即emb_size
+class Multihead_Attention(nn.Module):
     def __init__(self,input_dim:int,num_heads:int,head_dim:int,output_dim:int,dropout:float=0.):
         super().__init__()
         assert input_dim%num_heads==0,f"input_dim {input_dim} should be divisible by num_heads {num_heads}"
@@ -87,14 +87,14 @@ class Multihead_Attention(nn.Module): #input_dim即emb_size
         self.head_dim=head_dim
         self.inner_dim=head_dim*num_heads
         self.scale=self.head_dim**-0.5
-        self.qkv=nn.Linear(self.input_dim,self.inner_dim*3,bias=False) #qkv形状为(input_dim,inner_dim*3)
-        self.output_dim=output_dim #输出维度,一般等于输入维度或inner_dim
+        self.qkv=nn.Linear(self.input_dim,self.inner_dim*3,bias=False) #
+        self.output_dim=output_dim
 
         self.att_drop=nn.Dropout(dropout)
         self.projection=nn.Linear(self.inner_dim,self.output_dim)
     def forward(self,x,mask=None):
-        qkv=rearrange(self.qkv(x),'b n (qkv h d)->(qkv) b h n d',h=self.num_heads,qkv=3) #x的形状为(b,n,d),qkv的形状为(b,n,inner_dim*3),将qkv分成三个张量
-        q,k,v=qkv[0],qkv[1],qkv[2]     #多头注意力机制中，x的维度从来没有分割过，只有qkv分割过
+        qkv=rearrange(self.qkv(x),'b n (qkv h d)->(qkv) b h n d',h=self.num_heads,qkv=3)
+        q,k,v=qkv[0],qkv[1],qkv[2]
         energy=torch.einsum('bhid,bhjd->bhij',q,k)
         if mask is not None:
             fill_value=torch.finfo(torch.float32).min
@@ -107,7 +107,7 @@ class Multihead_Attention(nn.Module): #input_dim即emb_size
         return out
 
 
-class ResidualAdd(nn.Module): #残差连接的实现方法：往残差块里传需要的函数，然后实现输入与函数输出相加，最后输出
+class ResidualAdd(nn.Module):
     def __init__(self,fn):
         super().__init__()
         self.fn=fn
@@ -119,7 +119,7 @@ class ResidualAdd(nn.Module): #残差连接的实现方法：往残差块里传�
         return x
 
 class FeedForwardBlock(nn.Module):
-    def __init__(self, input_dim: int, expansion: int = 4, drop_p: float = 0.): #expansion是扩展维度倍数
+    def __init__(self, input_dim: int, expansion: int = 4, drop_p: float = 0.):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(input_dim, expansion * input_dim),
@@ -130,7 +130,7 @@ class FeedForwardBlock(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-class block(nn.Sequential):  #nn.Sequential是一个容器，可以将模块按顺序排列,不需要forward函数
+class block(nn.Sequential):
     def __init__(self,
                  emb_size: int = 768,
                  drop_p: float = 0.,
@@ -138,7 +138,7 @@ class block(nn.Sequential):  #nn.Sequential是一个容器，可以将模块按�
                  forward_drop_p: float = 0.,
                  ** kwargs):
         super().__init__(
-            ResidualAdd(nn.Sequential(   #将Sequential的功能传给fn
+            ResidualAdd(nn.Sequential(
                 nn.LayerNorm(emb_size),
                 Multihead_Attention(emb_size, **kwargs),
                 nn.Dropout(drop_p)
@@ -155,7 +155,7 @@ class TransformerEncoder(nn.Sequential):
     def __init__(self,c,h,w,d_model=768):
         super().__init__()
         self.embedding = Img2Seq(c,h,w,d_model)
-        self.pos_encoder = LearnablePositionalEncoding(d_model, max_len=32)
+        self.pos_encoder = LearnablePositionalEncoding(d_model, max_len=16)
         self.transformer = block(num_heads=8, head_dim=96,output_dim=768, forward_expansion=4, forward_drop_p=0.)
         self.recover = seq2Img(c,h,w,d_model)
     def forward(self, x):
