@@ -21,13 +21,16 @@ class Img2Seq(nn.Module):
         self.w = w
         self.d_model = d_model
 
-        self.linear = nn.Linear(c * h * w, d_model)
+        self.linear = nn.Linear(c, d_model) #c*h*w->d_model
 
     def forward(self, x):
         b, t, c, h, w = x.shape
-        x = x.view(b * t, c * h * w)
-        x = self.linear(x)
-        x = x.view(b, t, self.d_model)
+        x=x.view(b,t,(h*w),c)
+        x=self.linear(x)
+        x=x.view((b*h*w),t,-1)
+        # x = x.view(b * t, c * h * w)
+        # x = self.linear(x)
+        # x = x.view(b, t, self.d_model)
         return x
 
 
@@ -39,13 +42,16 @@ class seq2Img(nn.Module):
         self.w = w
         self.d_model = d_model
 
-        self.linear = nn.Linear(d_model, c * h * w)
+        self.linear = nn.Linear(d_model, c ) #d_model->c*h*w
 
     def forward(self, x):
-        b, t, d = x.shape
-        x = x.view(b * t, d)
-        x = self.linear(x)
-        x = x.view(b, t, self.c, self.h, self.w)
+        # b, t, d = x.shape
+        # x = x.view(b * t, d)
+        # x = self.linear(x)
+        # x = x.view(b, t, self.c, self.h, self.w)
+        x=self.linear(x)
+        _,t,_=x.shape
+        x=x.view(-1,t,self.c,self.h,self.w)
         return x
 
 
@@ -165,6 +171,11 @@ class TransformerEncoder(nn.Sequential):
         x = self.recover(x)
         return x
 
+if __name__ == '__main__':
+    x=torch.randn(1,8,3,56,56)
+    model=TransformerEncoder(3,56,56)
+    y=model(x)
+    print(y.shape)
 
 
 
